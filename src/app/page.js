@@ -31,6 +31,9 @@ export default function Dashboard() {
   const [creatingPermiso, setCreatingPermiso] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
+  const [deletingRoleId, setDeletingRoleId] = useState(null);
+  const [deletingPermisoId, setDeletingPermisoId] = useState(null);
+  const [deletingUserId, setDeletingUserId] = useState(null);
 
   const showFeedback = useCallback((type, message) => {
     setFeedback({ type, message });
@@ -220,6 +223,97 @@ export default function Dashboard() {
     }
   };
 
+  const handleDeleteRole = async (roleId) => {
+    const role = roles.find((item) => item.id_rol === roleId);
+    if (role?.permisos?.length) {
+      showFeedback(
+        "error",
+        "No puedes eliminar un rol que todavía tiene permisos asignados."
+      );
+      return;
+    }
+
+    setDeletingRoleId(roleId);
+
+    try {
+      const response = await fetch(`/api/roles/${roleId}`, {
+        method: "DELETE",
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error);
+      }
+
+      setRoles((current) =>
+        current.filter((roleItem) => roleItem.id_rol !== roleId)
+      );
+      showFeedback("success", "Rol eliminado correctamente.");
+    } catch (error) {
+      showFeedback(
+        "error",
+        error.message || "No fue posible eliminar el rol."
+      );
+    } finally {
+      setDeletingRoleId(null);
+    }
+  };
+
+  const handleDeletePermiso = async (permisoId) => {
+    setDeletingPermisoId(permisoId);
+
+    try {
+      const response = await fetch(`/api/permisos/${permisoId}`, {
+        method: "DELETE",
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error);
+      }
+
+      await Promise.all([loadPermisos(), loadRoles()]);
+      showFeedback(
+        "success",
+        "Permiso eliminado y retirado de los roles asociados."
+      );
+    } catch (error) {
+      showFeedback(
+        "error",
+        error.message || "No fue posible eliminar el permiso."
+      );
+    } finally {
+      setDeletingPermisoId(null);
+    }
+  };
+
+  const handleDeleteUser = async (userId) => {
+    setDeletingUserId(userId);
+
+    try {
+      const response = await fetch(`/api/usuarios/${userId}`, {
+        method: "DELETE",
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error);
+      }
+
+      setUsuarios((current) =>
+        current.filter((usuario) => usuario.id_usuario !== userId)
+      );
+      showFeedback("success", "Usuario eliminado correctamente.");
+    } catch (error) {
+      showFeedback(
+        "error",
+        error.message || "No fue posible eliminar el usuario."
+      );
+    } finally {
+      setDeletingUserId(null);
+    }
+  };
+
   const handleCreateUser = async (event) => {
     event.preventDefault();
     setCreatingUser(true);
@@ -257,33 +351,30 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="min-h-screen bg-background text-foreground">
       <div className="relative">
-        <div className="absolute inset-x-0 top-0 h-64 bg-gradient-to-br from-sky-500/40 via-indigo-500/20 to-transparent blur-3xl opacity-50" />
+        <div className="absolute inset-x-0 top-0 h-64 bg-gradient-to-br from-primary/35 via-secondary/25 to-transparent blur-3xl opacity-70" />
         <div className="relative mx-auto flex max-w-6xl flex-col gap-12 px-6 pb-16 pt-12 lg:px-8">
-          <header className="rounded-3xl border border-slate-800 bg-slate-900/40 p-8 shadow-[0_25px_60px_-35px_rgba(15,23,42,0.9)] backdrop-blur">
+          <header className="rounded-3xl border border-border bg-card/80 p-8 shadow-[0_25px_60px_-35px_rgba(15,149,142,0.45)] backdrop-blur">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <p className="uppercase tracking-[0.35em] text-xs text-sky-300">
+                <p className="uppercase tracking-[0.35em] text-xs text-primary">
                   Escuela de pilotos
                 </p>
-                <h1 className="mt-4 text-4xl font-semibold text-white sm:text-5xl">
+                <h1 className="mt-4 text-4xl font-semibold text-foreground sm:text-5xl">
                   Panel de roles, permisos y usuarios
                 </h1>
-                <p className="mt-3 max-w-3xl text-base text-slate-300">
-                  Centraliza la gestión de perfiles de acceso, asigna permisos a
-                  cada rol y crea cuentas para tu equipo en un entorno sencillo
-                  y elegante.
-                </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 {resumen.map((item) => (
                   <div
                     key={item.label}
-                    className="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3 text-center shadow-inner"
+                    className="rounded-2xl border border-border bg-card/80 px-4 py-3 text-center shadow-inner"
                   >
-                    <p className="text-sm text-slate-400">{item.label}</p>
-                    <p className="text-3xl font-semibold text-white">
+                    <p className="text-sm text-muted-foreground">
+                      {item.label}
+                    </p>
+                    <p className="text-3xl font-semibold text-foreground">
                       {isLoading ? "—" : item.value}
                     </p>
                   </div>
@@ -296,8 +387,8 @@ export default function Dashboard() {
             <div
               className={`rounded-2xl border px-6 py-4 text-sm shadow-lg ${
                 feedback.type === "error"
-                  ? "border-rose-500/60 bg-rose-500/15 text-rose-100"
-                  : "border-emerald-400/60 bg-emerald-400/10 text-emerald-100"
+                  ? "border-destructive/60 bg-destructive/15 text-destructive-foreground"
+                  : "border-primary/50 bg-primary/10 text-primary"
               }`}
             >
               {feedback.message}
@@ -305,27 +396,27 @@ export default function Dashboard() {
           )}
 
           {isLoading && (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/50 px-6 py-4 text-sm text-slate-300">
+            <div className="rounded-2xl border border-border bg-card/65 px-6 py-4 text-sm text-muted-foreground">
               Cargando información del panel...
             </div>
           )}
 
           <main className="grid gap-10 lg:grid-cols-[1fr,1fr]">
-            <section className="flex flex-col gap-6 rounded-3xl border border-slate-800 bg-slate-900/40 p-6 shadow-[0_20px_40px_-30px_rgba(15,23,42,1)] backdrop-blur">
+            <section className="flex flex-col gap-6 rounded-3xl border border-border bg-card/60 p-6 shadow-[0_20px_40px_-30px_rgba(16,122,106,0.45)] backdrop-blur">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-xl font-semibold text-white">
+                <h2 className="text-xl font-semibold text-foreground">
                   Gestión de roles
                 </h2>
-                <span className="rounded-full border border-slate-800 bg-slate-900/70 px-3 py-1 text-xs text-slate-300">
+                <span className="rounded-full border border-border bg-card/70 px-3 py-1 text-xs text-muted-foreground">
                   {roles.length} roles
                 </span>
               </div>
 
               <form
-                className="grid gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-5"
+                className="grid gap-3 rounded-2xl border border-border bg-card/70 p-5"
                 onSubmit={handleCreateRole}
               >
-                <p className="text-sm font-medium text-slate-200">
+                <p className="text-sm font-medium text-muted-foreground">
                   Crear nuevo rol
                 </p>
                 <input
@@ -338,7 +429,7 @@ export default function Dashboard() {
                     }))
                   }
                   placeholder="Nombre del rol (ej. Instructor)"
-                  className="rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-2.5 text-sm text-slate-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50"
+                  className="rounded-xl border border-border bg-muted/70 px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/40"
                 />
                 <textarea
                   value={roleForm.descripcion}
@@ -350,12 +441,12 @@ export default function Dashboard() {
                   }
                   placeholder="Descripción del rol"
                   rows={2}
-                  className="resize-none rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-2.5 text-sm text-slate-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50"
+                  className="resize-none rounded-xl border border-border bg-muted/70 px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/40"
                 />
                 <button
                   type="submit"
                   disabled={creatingRole}
-                  className="flex items-center justify-center rounded-xl bg-sky-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-sky-500/60"
+                  className="flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/60"
                 >
                   {creatingRole ? "Creando rol..." : "Guardar rol"}
                 </button>
@@ -363,29 +454,49 @@ export default function Dashboard() {
 
               <div className="grid gap-4">
                 {roles.length === 0 && !isLoading ? (
-                  <p className="rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-6 text-center text-sm text-slate-300">
+                  <p className="rounded-2xl border border-border bg-card/70 px-4 py-6 text-center text-sm text-muted-foreground">
                     Aún no hay roles registrados.
                   </p>
                 ) : (
                   roles.map((role) => (
                     <article
                       key={role.id_rol}
-                      className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-sm"
+                      className="rounded-2xl border border-border bg-card/70 p-5 shadow-sm"
                     >
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                          <h3 className="text-lg font-semibold text-white">
+                          <h3 className="text-lg font-semibold text-foreground">
                             {role.nombre}
                           </h3>
                           {role.descripcion && (
-                            <p className="text-sm text-slate-300">
+                            <p className="text-sm text-muted-foreground">
                               {role.descripcion}
                             </p>
                           )}
                         </div>
-                        <span className="rounded-full border border-slate-800 bg-slate-950/70 px-3 py-1 text-xs text-slate-300">
-                          {role.permisos?.length || 0} permisos
-                        </span>
+                        <div className="flex flex-col items-start gap-2 sm:items-end">
+                          <span className="rounded-full border border-border bg-muted/70 px-3 py-1 text-xs text-muted-foreground">
+                            {role.permisos?.length || 0} permisos
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRole(role.id_rol)}
+                            disabled={
+                              deletingRoleId === role.id_rol ||
+                              (role.permisos?.length || 0) > 0
+                            }
+                            title={
+                              role.permisos?.length
+                                ? "Elimina los permisos asignados antes de borrar este rol."
+                                : "Eliminar rol"
+                            }
+                            className="rounded-lg border border-destructive/60 px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/10 disabled:cursor-not-allowed disabled:border-destructive/30 disabled:text-destructive/50 disabled:hover:bg-transparent"
+                          >
+                            {deletingRoleId === role.id_rol
+                              ? "Eliminando..."
+                              : "Eliminar rol"}
+                          </button>
+                        </div>
                       </div>
 
                       {role.permisos?.length ? (
@@ -393,14 +504,14 @@ export default function Dashboard() {
                           {role.permisos.map((rel) => (
                             <span
                               key={`${rel.id_rol}-${rel.id_permiso}`}
-                              className="rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs text-sky-200"
+                              className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary/80"
                             >
                               {rel.permiso?.nombre}
                             </span>
                           ))}
                         </div>
                       ) : (
-                        <p className="mt-4 text-sm text-slate-400">
+                        <p className="mt-4 text-sm text-muted-foreground">
                           No hay permisos asignados todavía.
                         </p>
                       )}
@@ -410,21 +521,21 @@ export default function Dashboard() {
               </div>
             </section>
 
-            <section className="flex flex-col gap-6 rounded-3xl border border-slate-800 bg-slate-900/40 p-6 shadow-[0_20px_40px_-30px_rgba(15,23,42,1)] backdrop-blur">
+            <section className="flex flex-col gap-6 rounded-3xl border border-border bg-card/60 p-6 shadow-[0_20px_40px_-30px_rgba(16,122,106,0.45)] backdrop-blur">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-xl font-semibold text-white">
+                <h2 className="text-xl font-semibold text-foreground">
                   Permisos disponibles
                 </h2>
-                <span className="rounded-full border border-slate-800 bg-slate-900/70 px-3 py-1 text-xs text-slate-300">
+                <span className="rounded-full border border-border bg-card/70 px-3 py-1 text-xs text-muted-foreground">
                   {permisos.length} permisos
                 </span>
               </div>
 
               <form
-                className="grid gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-5"
+                className="grid gap-3 rounded-2xl border border-border bg-card/70 p-5"
                 onSubmit={handleCreatePermiso}
               >
-                <p className="text-sm font-medium text-slate-200">
+                <p className="text-sm font-medium text-muted-foreground">
                   Crear permiso
                 </p>
                 <input
@@ -437,7 +548,7 @@ export default function Dashboard() {
                     }))
                   }
                   placeholder="Nombre del permiso (ej. Crear aeronaves)"
-                  className="rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-2.5 text-sm text-slate-100 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50"
+                  className="rounded-xl border border-border bg-muted/70 px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-secondary focus:ring-2 focus:ring-secondary/40"
                 />
                 <textarea
                   value={permisoForm.descripcion}
@@ -449,22 +560,22 @@ export default function Dashboard() {
                   }
                   placeholder="Descripción del permiso"
                   rows={2}
-                  className="resize-none rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-2.5 text-sm text-slate-100 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50"
+                  className="resize-none rounded-xl border border-border bg-muted/70 px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-secondary focus:ring-2 focus:ring-secondary/40"
                 />
                 <button
                   type="submit"
                   disabled={creatingPermiso}
-                  className="flex items-center justify-center rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-indigo-500/60"
+                  className="flex items-center justify-center rounded-xl bg-secondary px-4 py-2.5 text-sm font-medium text-secondary-foreground transition hover:bg-secondary/90 disabled:cursor-not-allowed disabled:bg-secondary/60"
                 >
                   {creatingPermiso ? "Creando permiso..." : "Guardar permiso"}
                 </button>
               </form>
 
               <form
-                className="grid gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-5"
+                className="grid gap-3 rounded-2xl border border-border bg-card/70 p-5"
                 onSubmit={handleAssignPermission}
               >
-                <p className="text-sm font-medium text-slate-200">
+                <p className="text-sm font-medium text-muted-foreground">
                   Asignar permiso a un rol
                 </p>
                 <select
@@ -475,7 +586,7 @@ export default function Dashboard() {
                       roleId: event.target.value,
                     }))
                   }
-                  className="rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-2.5 text-sm text-slate-100 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50"
+                  className="rounded-xl border border-border bg-muted/70 px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-secondary focus:ring-2 focus:ring-secondary/40"
                 >
                   <option value="">Selecciona un rol</option>
                   {roles.map((role) => (
@@ -492,7 +603,7 @@ export default function Dashboard() {
                       permissionId: event.target.value,
                     }))
                   }
-                  className="rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-2.5 text-sm text-slate-100 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50"
+                  className="rounded-xl border border-border bg-muted/70 px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-secondary focus:ring-2 focus:ring-secondary/40"
                 >
                   <option value="">Selecciona un permiso</option>
                   {permisos.map((permiso) => (
@@ -504,7 +615,7 @@ export default function Dashboard() {
                 <button
                   type="submit"
                   disabled={assigning}
-                  className="flex items-center justify-center rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-500/60"
+                  className="flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/60"
                 >
                   {assigning ? "Asignando permiso..." : "Asignar permiso"}
                 </button>
@@ -512,43 +623,56 @@ export default function Dashboard() {
 
               <div className="grid gap-4">
                 {permisos.length === 0 && !isLoading ? (
-                  <p className="rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-6 text-center text-sm text-slate-300">
+                  <p className="rounded-2xl border border-border bg-card/70 px-4 py-6 text-center text-sm text-muted-foreground">
                     Aún no hay permisos registrados.
                   </p>
                 ) : (
                   permisos.map((permiso) => (
                     <article
                       key={permiso.id_permiso}
-                      className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-sm"
+                      className="rounded-2xl border border-border bg-card/70 p-5 shadow-sm"
                     >
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                          <h3 className="text-lg font-semibold text-white">
+                          <h3 className="text-lg font-semibold text-foreground">
                             {permiso.nombre}
                           </h3>
                           {permiso.descripcion && (
-                            <p className="text-sm text-slate-300">
+                            <p className="text-sm text-muted-foreground">
                               {permiso.descripcion}
                             </p>
                           )}
                         </div>
-                        <span className="rounded-full border border-slate-800 bg-slate-950/70 px-3 py-1 text-xs text-slate-300">
-                          {permiso.roles?.length || 0} roles
-                        </span>
+                        <div className="flex flex-col items-start gap-2 sm:items-end">
+                          <span className="rounded-full border border-border bg-muted/70 px-3 py-1 text-xs text-muted-foreground">
+                            {permiso.roles?.length || 0} roles
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePermiso(permiso.id_permiso)}
+                            disabled={deletingPermisoId === permiso.id_permiso}
+                            title="Eliminar permiso"
+                            className="rounded-lg border border-destructive/60 px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/10 disabled:cursor-not-allowed disabled:border-destructive/30 disabled:text-destructive/50 disabled:hover:bg-transparent"
+                          >
+                            {deletingPermisoId === permiso.id_permiso
+                              ? "Eliminando..."
+                              : "Eliminar permiso"}
+                          </button>
+                        </div>
                       </div>
                       {permiso.roles?.length ? (
                         <div className="mt-4 flex flex-wrap gap-2">
                           {permiso.roles.map((rel) => (
                             <span
                               key={`${rel.id_permiso}-${rel.id_rol}`}
-                              className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-100"
+                              className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary"
                             >
                               {rel.rol?.nombre}
                             </span>
                           ))}
                         </div>
                       ) : (
-                        <p className="mt-4 text-sm text-slate-400">
+                        <p className="mt-4 text-sm text-muted-foreground">
                           Ningún rol utiliza este permiso todavía.
                         </p>
                       )}
@@ -559,26 +683,26 @@ export default function Dashboard() {
             </section>
           </main>
 
-          <section className="rounded-3xl border border-slate-800 bg-slate-900/40 p-6 shadow-[0_20px_40px_-30px_rgba(15,23,42,1)] backdrop-blur">
+          <section className="rounded-3xl border border-border bg-card/60 p-6 shadow-[0_20px_40px_-30px_rgba(16,122,106,0.45)] backdrop-blur">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-xl font-semibold text-white">
+                <h2 className="text-xl font-semibold text-foreground">
                   Usuarios del sistema
                 </h2>
-                <p className="text-sm text-slate-300">
+                <p className="text-sm text-muted-foreground">
                   Crea cuentas y vincula cada usuario con el rol adecuado.
                 </p>
               </div>
-              <span className="rounded-full border border-slate-800 bg-slate-900/70 px-3 py-1 text-xs text-slate-300">
+              <span className="rounded-full border border-border bg-card/70 px-3 py-1 text-xs text-muted-foreground">
                 {usuarios.length} usuarios
               </span>
             </div>
 
             <form
-              className="mt-6 grid gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-5"
+              className="mt-6 grid gap-3 rounded-2xl border border-border bg-card/70 p-5"
               onSubmit={handleCreateUser}
             >
-              <p className="text-sm font-medium text-slate-200">
+              <p className="text-sm font-medium text-muted-foreground">
                 Registrar nuevo usuario
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -592,7 +716,7 @@ export default function Dashboard() {
                     }))
                   }
                   placeholder="Nombre completo"
-                  className="rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-2.5 text-sm text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/40"
+                  className="rounded-xl border border-border bg-muted/70 px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/35"
                 />
                 <input
                   type="email"
@@ -605,7 +729,7 @@ export default function Dashboard() {
                     }))
                   }
                   placeholder="Correo electrónico"
-                  className="rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-2.5 text-sm text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/40"
+                  className="rounded-xl border border-border bg-muted/70 px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/35"
                 />
               </div>
               <div className="grid gap-3 sm:grid-cols-[1fr,220px]">
@@ -621,7 +745,7 @@ export default function Dashboard() {
                     }))
                   }
                   placeholder="Contraseña (mínimo 8 caracteres)"
-                  className="rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-2.5 text-sm text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/40"
+                  className="rounded-xl border border-border bg-muted/70 px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/35"
                 />
                 <select
                   value={userForm.roleId}
@@ -632,7 +756,7 @@ export default function Dashboard() {
                     }))
                   }
                   required
-                  className="rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-2.5 text-sm text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/40"
+                  className="rounded-xl border border-border bg-muted/70 px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/35"
                 >
                   <option value="">Selecciona un rol</option>
                   {roles.map((role) => (
@@ -645,7 +769,7 @@ export default function Dashboard() {
               <button
                 type="submit"
                 disabled={creatingUser}
-                className="mt-2 flex items-center justify-center rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-500/60"
+                className="mt-2 flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/60"
               >
                 {creatingUser ? "Creando usuario..." : "Registrar usuario"}
               </button>
@@ -653,24 +777,36 @@ export default function Dashboard() {
 
             <div className="mt-6 grid gap-4">
               {usuarios.length === 0 && !isLoading ? (
-                <p className="rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-6 text-center text-sm text-slate-300">
+                <p className="rounded-2xl border border-border bg-card/70 px-4 py-6 text-center text-sm text-muted-foreground">
                   Aún no hay usuarios registrados.
                 </p>
               ) : (
                 usuarios.map((usuario) => (
                   <article
                     key={usuario.id_usuario}
-                    className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+                    className="flex flex-col gap-3 rounded-2xl border border-border bg-card/70 p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div>
-                      <h3 className="text-base font-semibold text-white">
+                      <h3 className="text-base font-semibold text-foreground">
                         {usuario.nombre}
                       </h3>
-                      <p className="text-sm text-slate-300">{usuario.email}</p>
+                      <p className="text-sm text-muted-foreground">{usuario.email}</p>
                     </div>
-                    <span className="inline-flex items-center justify-center rounded-full border border-slate-800 bg-slate-950/70 px-4 py-1.5 text-xs font-medium text-slate-200">
-                      {usuario.rol?.nombre || "Rol sin asignar"}
-                    </span>
+                    <div className="flex items-center gap-3 sm:gap-4">
+                      <span className="inline-flex items-center justify-center rounded-full border border-border bg-muted/70 px-4 py-1.5 text-xs font-medium text-muted-foreground">
+                        {usuario.rol?.nombre || "Rol sin asignar"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteUser(usuario.id_usuario)}
+                        disabled={deletingUserId === usuario.id_usuario}
+                        className="rounded-lg border border-destructive/60 px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/10 disabled:cursor-not-allowed disabled:border-destructive/30 disabled:text-destructive/50 disabled:hover:bg-transparent"
+                      >
+                        {deletingUserId === usuario.id_usuario
+                          ? "Eliminando..."
+                          : "Eliminar"}
+                      </button>
+                    </div>
                   </article>
                 ))
               )}
@@ -681,4 +817,3 @@ export default function Dashboard() {
     </div>
   );
 }
-

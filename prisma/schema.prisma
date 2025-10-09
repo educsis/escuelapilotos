@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Roles {
+  id_rol      Int           @id @default(autoincrement())
+  nombre      String        @unique @db.VarChar(100)
+  descripcion String?       @db.VarChar(255)
+  usuarios    Usuarios[]
+  permisos    RolPermisos[]
+
+  @@map("Roles")
+}
+
+model Permisos {
+  id_permiso  Int           @id @default(autoincrement())
+  nombre      String        @unique @db.VarChar(100)
+  descripcion String?       @db.VarChar(255)
+  roles       RolPermisos[]
+
+  @@map("Permisos")
+}
+
+model Usuarios {
+  id_usuario   Int        @id @default(autoincrement())
+  nombre       String     @db.VarChar(100)
+  email        String     @unique @db.VarChar(100)
+  passwordHash String     @map("contraseña") @db.VarChar(255)
+  id_rol       Int
+  rol          Roles      @relation(fields: [id_rol], references: [id_rol])
+
+  @@map("Usuarios")
+}
+
+model RolPermisos {
+  id_rol     Int
+  id_permiso Int
+  rol        Roles    @relation(fields: [id_rol], references: [id_rol])
+  permiso    Permisos @relation(fields: [id_permiso], references: [id_permiso])
+
+  @@id([id_rol, id_permiso])
+  @@map("RolPermisos")
+}
+

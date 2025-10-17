@@ -8,6 +8,7 @@ export default function Dashboard() {
   const [roles, setRoles] = useState([]);
   const [permisos, setPermisos] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
+  const [paises, setPaises] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [feedback, setFeedback] = useState(initialFeedback);
 
@@ -15,6 +16,12 @@ export default function Dashboard() {
   const [permisoForm, setPermisoForm] = useState({
     nombre: "",
     descripcion: "",
+  });
+  const [paisForm, setPaisForm] = useState({ nombre: "" });
+  const [regionForm, setRegionForm] = useState({ nombre: "", paisId: "" });
+  const [departamentoForm, setDepartamentoForm] = useState({
+    nombre: "",
+    regionId: "",
   });
   const [assignForm, setAssignForm] = useState({
     roleId: "",
@@ -25,10 +32,15 @@ export default function Dashboard() {
     email: "",
     password: "",
     roleId: "",
+    departamentoId: "",
   });
+  const [permissionLocations, setPermissionLocations] = useState({});
 
   const [creatingRole, setCreatingRole] = useState(false);
   const [creatingPermiso, setCreatingPermiso] = useState(false);
+  const [creatingPais, setCreatingPais] = useState(false);
+  const [creatingRegion, setCreatingRegion] = useState(false);
+  const [creatingDepartamento, setCreatingDepartamento] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
   const [deletingRoleId, setDeletingRoleId] = useState(null);
@@ -61,6 +73,19 @@ export default function Dashboard() {
     setPermisos(payload.data || []);
   }, []);
 
+  const loadPaises = useCallback(async () => {
+    const response = await fetch("/api/paises");
+    const payload = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        payload.error || "No fue posible cargar los países y regiones."
+      );
+    }
+
+    setPaises(payload.data || []);
+  }, []);
+
   const loadUsuarios = useCallback(async () => {
     const response = await fetch("/api/usuarios");
     const payload = await response.json();
@@ -75,7 +100,12 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        await Promise.all([loadRoles(), loadPermisos(), loadUsuarios()]);
+        await Promise.all([
+          loadRoles(),
+          loadPermisos(),
+          loadPaises(),
+          loadUsuarios(),
+        ]);
       } catch (error) {
         showFeedback(
           "error",
@@ -88,7 +118,7 @@ export default function Dashboard() {
     };
 
     fetchData();
-  }, [loadRoles, loadPermisos, loadUsuarios, showFeedback]);
+  }, [loadRoles, loadPermisos, loadPaises, loadUsuarios, showFeedback]);
 
   useEffect(() => {
     if (feedback.type === "idle") {
@@ -107,9 +137,141 @@ export default function Dashboard() {
       { label: "Roles activos", value: roles.length },
       { label: "Permisos configurados", value: permisos.length },
       { label: "Usuarios registrados", value: usuarios.length },
+      { label: "Países disponibles", value: paises.length },
     ],
-    [roles.length, permisos.length, usuarios.length]
+    [roles.length, permisos.length, usuarios.length, paises.length]
   );
+
+  const regionLookup = useMemo(() => {
+    const entries = new Map();
+
+    paises.forEach((pais) => {
+      pais?.regiones?.forEach((region) => {
+        entries.set(region.id_region, {
+          ...region,
+          id_pais: pais.id_pais,
+          paisNombre: pais.nombre,
+        });
+      });
+    });
+
+    return entries;
+  }, [paises]);
+
+  const departamentoLookup = useMemo(() => {
+    const entries = new Map();
+
+    paises.forEach((pais) => {
+      pais?.regiones?.forEach((region) => {
+        region?.departamentos?.forEach((departamento) => {
+          entries.set(departamento.id_departamento, {
+            ...departamento,
+            id_region: region.id_region,
+            id_pais: pais.id_pais,
+            regionNombre: region.nombre,
+            paisNombre: pais.nombre,
+          });
+        });
+      });
+    });
+
+    return entries;
+  }, [paises]);
+
+  const regionOptions = useMemo(
+    () =>
+      Array.from(regionLookup.values()).sort((a, b) =>
+        a.nombre.localeCompare(b.nombre)
+      ),
+    [regionLookup]
+  );
+
+  const departamentoOptions = useMemo(
+    () =>
+      Array.from(departamentoLookup.values()).sort((a, b) =>
+        a.nombre.localeCompare(b.nombre)
+      ),
+    [departamentoLookup]
+  );
+
+  const togglePermissionLocation = useCallback((permissionId, locationKey) => {
+    setPermissionLocations((prev) => {
+      const current = new Set(prev[permissionId] || []);
+
+      if (current.has(locationKey)) {
+        current.delete(locationKey);
+      } else {
+        if (locationKey === "global") {
+          current.clear();
+          current.add("global");
+        } else {
+          current.delete("global");
+          current.add(locationKey);
+        }
+      }
+
+      if (current.size === 0) {
+        const { [permissionId]: _removed, ...rest } = prev;
+        return rest;
+      }
+
+      return {
+        ...prev,
+        [permissionId]: Array.from(current),
+      };
+    });
+  }, []);
+
+  const isLocationSelected = useCallback(
+    (permissionId, locationKey) =>
+      Boolean(permissionLocations[permissionId]?.includes(locationKey)),
+    [permissionLocations]
+  );
+
+  const getScopeLabel = useCallback((assignment) => {
+    if (!assignment) {
+      return "Global";
+    }
+
+    const departamento = assignment.departamento;
+    const region =
+      departamento?.region || assignment.region || null;
+    const pais =
+      departamento?.region?.pais ||
+      assignment.region?.pais ||
+      assignment.pais ||
+      null;
+
+    if (departamento?.nombre) {
+      const parts = [`Departamento ${departamento.nombre}`];
+
+      if (region?.nombre) {
+        parts.push(`Región ${region.nombre}`);
+      }
+
+      if (pais?.nombre) {
+        parts.push(`País ${pais.nombre}`);
+      }
+
+      return parts.join(" · ");
+    }
+
+    if (region?.nombre) {
+      const parts = [`Región ${region.nombre}`];
+
+      if (pais?.nombre) {
+        parts.push(`País ${pais.nombre}`);
+      }
+
+      return parts.join(" · ");
+    }
+
+    if (pais?.nombre) {
+      return `País ${pais.nombre}`;
+    }
+
+    return "Global";
+  }, []);
 
   const handleCreateRole = async (event) => {
     event.preventDefault();
@@ -172,6 +334,116 @@ export default function Dashboard() {
       );
     } finally {
       setCreatingPermiso(false);
+    }
+  };
+
+  const handleCreatePais = async (event) => {
+    event.preventDefault();
+    setCreatingPais(true);
+
+    try {
+      const response = await fetch("/api/paises", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(paisForm),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error);
+      }
+
+      await loadPaises();
+      setPaisForm({ nombre: "" });
+      showFeedback("success", "País registrado correctamente.");
+    } catch (error) {
+      showFeedback(
+        "error",
+        error.message || "No fue posible registrar el país."
+      );
+    } finally {
+      setCreatingPais(false);
+    }
+  };
+
+  const handleCreateRegion = async (event) => {
+    event.preventDefault();
+    setCreatingRegion(true);
+
+    try {
+      if (!regionForm.paisId) {
+        throw new Error("Selecciona el país al que pertenece la región.");
+      }
+
+      const response = await fetch("/api/regiones", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          nombre: regionForm.nombre,
+          paisId: Number(regionForm.paisId),
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error);
+      }
+
+      await loadPaises();
+      setRegionForm({ nombre: "", paisId: "" });
+      showFeedback("success", "Región registrada correctamente.");
+    } catch (error) {
+      showFeedback(
+        "error",
+        error.message || "No fue posible registrar la región."
+      );
+    } finally {
+      setCreatingRegion(false);
+    }
+  };
+
+  const handleCreateDepartamento = async (event) => {
+    event.preventDefault();
+    setCreatingDepartamento(true);
+
+    try {
+      if (!departamentoForm.regionId) {
+        throw new Error("Selecciona la región a la que pertenece el departamento.");
+      }
+
+      const response = await fetch("/api/departamentos", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          nombre: departamentoForm.nombre,
+          regionId: Number(departamentoForm.regionId),
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error);
+      }
+
+      await loadPaises();
+      setDepartamentoForm({ nombre: "", regionId: "" });
+      showFeedback("success", "Departamento registrado correctamente.");
+    } catch (error) {
+      showFeedback(
+        "error",
+        error.message || "No fue posible registrar el departamento."
+      );
+    } finally {
+      setCreatingDepartamento(false);
     }
   };
 
@@ -273,6 +545,14 @@ export default function Dashboard() {
       }
 
       await Promise.all([loadPermisos(), loadRoles()]);
+      setPermissionLocations((current) => {
+        if (!current[permisoId]) {
+          return current;
+        }
+
+        const { [permisoId]: _removed, ...rest } = current;
+        return rest;
+      });
       showFeedback(
         "success",
         "Permiso eliminado y retirado de los roles asociados."
@@ -319,6 +599,70 @@ export default function Dashboard() {
     setCreatingUser(true);
 
     try {
+      const scopesPayload = [];
+
+      Object.entries(permissionLocations).forEach(
+        ([permissionId, entries]) => {
+          const numericPermissionId = Number(permissionId);
+
+          if (!numericPermissionId || Number.isNaN(numericPermissionId)) {
+            return;
+          }
+
+          entries.forEach((entry) => {
+            if (entry === "global") {
+              scopesPayload.push({
+                permissionId: numericPermissionId,
+              });
+              return;
+            }
+
+            const [scopeType, scopeIdValue] = entry.split(":");
+            const scopeId = Number(scopeIdValue);
+
+            if (!scopeType || !scopeId || Number.isNaN(scopeId)) {
+              return;
+            }
+
+            if (scopeType === "pais") {
+              scopesPayload.push({
+                permissionId: numericPermissionId,
+                paisId: scopeId,
+              });
+            } else if (scopeType === "region") {
+              const region = regionLookup.get(scopeId);
+              scopesPayload.push({
+                permissionId: numericPermissionId,
+                paisId: region?.id_pais ?? null,
+                regionId: scopeId,
+              });
+            } else if (scopeType === "departamento") {
+              const departamento = departamentoLookup.get(scopeId);
+              scopesPayload.push({
+                permissionId: numericPermissionId,
+                paisId: departamento?.id_pais ?? null,
+                regionId: departamento?.id_region ?? null,
+                departamentoId: scopeId,
+              });
+            }
+          });
+        }
+      );
+
+      const dedupedScopes = Array.from(
+        new Map(
+          scopesPayload.map((scope) => [
+            [
+              scope.permissionId,
+              scope.paisId ?? "null",
+              scope.regionId ?? "null",
+              scope.departamentoId ?? "null",
+            ].join(":"),
+            scope,
+          ])
+        ).values()
+      );
+
       const response = await fetch("/api/usuarios", {
         method: "POST",
         headers: {
@@ -327,6 +671,10 @@ export default function Dashboard() {
         body: JSON.stringify({
           ...userForm,
           roleId: Number(userForm.roleId),
+          departamentoId: userForm.departamentoId
+            ? Number(userForm.departamentoId)
+            : null,
+          scopes: dedupedScopes,
         }),
       });
 
@@ -337,7 +685,14 @@ export default function Dashboard() {
       }
 
       await loadUsuarios();
-      setUserForm({ nombre: "", email: "", password: "", roleId: "" });
+      setUserForm({
+        nombre: "",
+        email: "",
+        password: "",
+        roleId: "",
+        departamentoId: "",
+      });
+      setPermissionLocations({});
       showFeedback("success", "Usuario creado y rol asignado.");
     } catch (error) {
       showFeedback(
@@ -365,7 +720,7 @@ export default function Dashboard() {
                   Panel de roles, permisos y usuarios
                 </h1>
               </div>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {resumen.map((item) => (
                   <div
                     key={item.label}
@@ -681,6 +1036,211 @@ export default function Dashboard() {
                 )}
               </div>
             </section>
+
+            <section className="flex flex-col gap-6 rounded-3xl border border-border bg-card/60 p-6 shadow-[0_20px_40px_-30px_rgba(16,122,106,0.45)] backdrop-blur">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-xl font-semibold text-foreground">
+                  Ubicaciones geográficas
+                </h2>
+                <span className="rounded-full border border-border bg-card/70 px-3 py-1 text-xs text-muted-foreground">
+                  {paises.length} países
+                </span>
+              </div>
+
+              <div className="grid gap-4">
+                <form
+                  className="grid gap-3 rounded-2xl border border-border bg-card/70 p-5"
+                  onSubmit={handleCreatePais}
+                >
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Registrar país
+                  </p>
+                  <input
+                    required
+                    value={paisForm.nombre}
+                    onChange={(event) =>
+                      setPaisForm({ nombre: event.target.value })
+                    }
+                    placeholder="Nombre del país"
+                    className="rounded-xl border border-border bg-muted/70 px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/40"
+                  />
+                  <button
+                    type="submit"
+                    disabled={creatingPais}
+                    className="flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/60"
+                  >
+                    {creatingPais ? "Guardando país..." : "Guardar país"}
+                  </button>
+                </form>
+
+                <form
+                  className="grid gap-3 rounded-2xl border border-border bg-card/70 p-5"
+                  onSubmit={handleCreateRegion}
+                >
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Registrar región
+                  </p>
+                  <input
+                    required
+                    value={regionForm.nombre}
+                    onChange={(event) =>
+                      setRegionForm((prev) => ({
+                        ...prev,
+                        nombre: event.target.value,
+                      }))
+                    }
+                    placeholder="Nombre de la región"
+                    className="rounded-xl border border-border bg-muted/70 px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/40"
+                  />
+                  <select
+                    required
+                    value={regionForm.paisId}
+                    onChange={(event) =>
+                      setRegionForm((prev) => ({
+                        ...prev,
+                        paisId: event.target.value,
+                      }))
+                    }
+                    disabled={paises.length === 0}
+                    className="rounded-xl border border-border bg-muted/70 px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="">Selecciona un país</option>
+                    {paises.map((pais) => (
+                      <option key={pais.id_pais} value={pais.id_pais}>
+                        {pais.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="submit"
+                    disabled={creatingRegion || paises.length === 0}
+                    className="flex items-center justify-center rounded-xl bg-secondary px-4 py-2.5 text-sm font-medium text-secondary-foreground transition hover:bg-secondary/90 disabled:cursor-not-allowed disabled:bg-secondary/60"
+                  >
+                    {creatingRegion ? "Guardando región..." : "Guardar región"}
+                  </button>
+                </form>
+
+                <form
+                  className="grid gap-3 rounded-2xl border border-border bg-card/70 p-5"
+                  onSubmit={handleCreateDepartamento}
+                >
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Registrar departamento
+                  </p>
+                  <input
+                    required
+                    value={departamentoForm.nombre}
+                    onChange={(event) =>
+                      setDepartamentoForm((prev) => ({
+                        ...prev,
+                        nombre: event.target.value,
+                      }))
+                    }
+                    placeholder="Nombre del departamento"
+                    className="rounded-xl border border-border bg-muted/70 px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/40"
+                  />
+                  <select
+                    required
+                    value={departamentoForm.regionId}
+                    onChange={(event) =>
+                      setDepartamentoForm((prev) => ({
+                        ...prev,
+                        regionId: event.target.value,
+                      }))
+                    }
+                    disabled={regionOptions.length === 0}
+                    className="rounded-xl border border-border bg-muted/70 px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="">Selecciona una región</option>
+                    {regionOptions.map((region) => (
+                      <option key={region.id_region} value={region.id_region}>
+                        {region.nombre} — {region.paisNombre}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="submit"
+                    disabled={
+                      creatingDepartamento || regionOptions.length === 0
+                    }
+                    className="flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/60"
+                  >
+                    {creatingDepartamento
+                      ? "Guardando departamento..."
+                      : "Guardar departamento"}
+                  </button>
+                </form>
+              </div>
+
+              <div className="space-y-3">
+                {isLoading ? (
+                  <p className="rounded-2xl border border-border bg-card/70 px-4 py-4 text-sm text-muted-foreground">
+                    Cargando ubicaciones...
+                  </p>
+                ) : paises.length === 0 ? (
+                  <p className="rounded-2xl border border-border bg-card/70 px-4 py-4 text-sm text-muted-foreground">
+                    Aún no hay países registrados.
+                  </p>
+                ) : (
+                  paises.map((pais) => (
+                    <article
+                      key={pais.id_pais}
+                      className="rounded-2xl border border-border bg-card/70 p-5 shadow-sm"
+                    >
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <h3 className="text-lg font-semibold text-foreground">
+                            {pais.nombre}
+                          </h3>
+                          <p className="text-xs text-muted-foreground">
+                            {pais.regiones?.length || 0} regiones registradas
+                          </p>
+                        </div>
+                      </div>
+                      {pais.regiones?.length ? (
+                        <div className="mt-4 space-y-3">
+                          {pais.regiones.map((region) => (
+                            <div
+                              key={region.id_region}
+                              className="rounded-xl border border-border/80 bg-background/60 p-4"
+                            >
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                <p className="text-sm font-medium text-foreground">
+                                  {region.nombre}
+                                </p>
+                                <span className="rounded-full border border-border bg-muted/70 px-3 py-1 text-[11px] text-muted-foreground">
+                                  {region.departamentos?.length || 0} departamentos
+                                </span>
+                              </div>
+                              {region.departamentos?.length ? (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {region.departamentos.map((departamento) => (
+                                    <span
+                                      key={departamento.id_departamento}
+                                      className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs text-primary/90"
+                                    >
+                                      {departamento.nombre}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="mt-3 text-xs text-muted-foreground">
+                                  No hay departamentos para esta región.
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-4 text-sm text-muted-foreground">
+                          No hay regiones registradas para este país.
+                        </p>
+                      )}
+                    </article>
+                  ))
+                )}
+              </div>
+            </section>
           </main>
 
           <section className="rounded-3xl border border-border bg-card/60 p-6 shadow-[0_20px_40px_-30px_rgba(16,122,106,0.45)] backdrop-blur">
@@ -766,6 +1326,185 @@ export default function Dashboard() {
                   ))}
                 </select>
               </div>
+              <select
+                value={userForm.departamentoId}
+                onChange={(event) =>
+                  setUserForm((prev) => ({
+                    ...prev,
+                    departamentoId: event.target.value,
+                  }))
+                }
+                disabled={departamentoOptions.length === 0}
+                className="rounded-xl border border-border bg-muted/70 px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/35 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="">Departamento principal (opcional)</option>
+                {departamentoOptions.map((departamento) => (
+                  <option
+                    key={departamento.id_departamento}
+                    value={departamento.id_departamento}
+                  >
+                    {departamento.nombre} — {departamento.regionNombre},{" "}
+                    {departamento.paisNombre}
+                  </option>
+                ))}
+              </select>
+              <div className="rounded-2xl border border-border/60 bg-card/60 p-5">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground">
+                      Permisos por ubicación
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Marca los permisos necesarios y define su alcance por país,
+                      región o departamento. Puedes combinar múltiples opciones.
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-border bg-muted/70 px-3 py-1 text-[11px] text-muted-foreground">
+                    {permisos.length} permisos disponibles
+                  </span>
+                </div>
+                {permisos.length === 0 ? (
+                  <p className="mt-4 rounded-xl border border-dashed border-border/70 bg-card/50 px-4 py-3 text-xs text-muted-foreground">
+                    Registra permisos antes de asignarlos a usuarios.
+                  </p>
+                ) : (
+                  <div className="mt-4 space-y-4">
+                    {permisos.map((permiso) => (
+                      <div
+                        key={permiso.id_permiso}
+                        className="rounded-xl border border-border/80 bg-background/60 p-4"
+                      >
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">
+                              {permiso.nombre}
+                            </p>
+                            {permiso.descripcion && (
+                              <p className="text-xs text-muted-foreground">
+                                {permiso.descripcion}
+                              </p>
+                            )}
+                          </div>
+                          <label className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-muted/60 px-3 py-1.5 text-[11px] text-muted-foreground">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-border text-primary focus:ring-primary/40"
+                              checked={isLocationSelected(
+                                permiso.id_permiso,
+                                "global"
+                              )}
+                              onChange={() =>
+                                togglePermissionLocation(
+                                  permiso.id_permiso,
+                                  "global"
+                                )
+                              }
+                            />
+                            Acceso global
+                          </label>
+                        </div>
+                        <div className="mt-4 space-y-3">
+                          {paises.length === 0 ? (
+                            <p className="rounded-lg border border-dashed border-border/60 bg-card/40 px-3 py-2 text-xs text-muted-foreground">
+                              Registra países para habilitar la asignación por
+                              ubicación.
+                            </p>
+                          ) : (
+                            paises.map((pais) => (
+                              <div
+                                key={`${permiso.id_permiso}-pais-${pais.id_pais}`}
+                                className="rounded-lg border border-border/60 bg-card/40 p-3"
+                              >
+                                <label className="flex items-center gap-2 text-sm text-foreground">
+                                  <input
+                                    type="checkbox"
+                                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary/40"
+                                    checked={isLocationSelected(
+                                      permiso.id_permiso,
+                                      `pais:${pais.id_pais}`
+                                    )}
+                                    onChange={() =>
+                                      togglePermissionLocation(
+                                        permiso.id_permiso,
+                                        `pais:${pais.id_pais}`
+                                      )
+                                    }
+                                  />
+                                  {pais.nombre}
+                                </label>
+                                <div className="mt-3 space-y-2 pl-6">
+                                  {pais.regiones?.length ? (
+                                    pais.regiones.map((region) => (
+                                      <div
+                                        key={`${permiso.id_permiso}-region-${region.id_region}`}
+                                        className="rounded-lg border border-border/40 bg-background/40 p-3"
+                                      >
+                                        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                                          <input
+                                            type="checkbox"
+                                            className="h-4 w-4 rounded border-border text-primary focus:ring-primary/40"
+                                            checked={isLocationSelected(
+                                              permiso.id_permiso,
+                                              `region:${region.id_region}`
+                                            )}
+                                            onChange={() =>
+                                              togglePermissionLocation(
+                                                permiso.id_permiso,
+                                                `region:${region.id_region}`
+                                              )
+                                            }
+                                          />
+                                          {region.nombre}
+                                        </label>
+                                        <div className="mt-2 flex flex-wrap gap-2 pl-6">
+                                          {region.departamentos?.length ? (
+                                            region.departamentos.map(
+                                              (departamento) => (
+                                                <label
+                                                  key={`${permiso.id_permiso}-departamento-${departamento.id_departamento}`}
+                                                  className="inline-flex items-center gap-2 rounded-full border border-border/50 bg-muted/50 px-3 py-1 text-[11px] text-muted-foreground"
+                                                >
+                                                  <input
+                                                    type="checkbox"
+                                                    className="h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary/40"
+                                                    checked={isLocationSelected(
+                                                      permiso.id_permiso,
+                                                      `departamento:${departamento.id_departamento}`
+                                                    )}
+                                                    onChange={() =>
+                                                      togglePermissionLocation(
+                                                        permiso.id_permiso,
+                                                        `departamento:${departamento.id_departamento}`
+                                                      )
+                                                    }
+                                                  />
+                                                  {departamento.nombre}
+                                                </label>
+                                              )
+                                            )
+                                          ) : (
+                                            <p className="text-[11px] text-muted-foreground">
+                                              Sin departamentos registrados.
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <p className="text-xs text-muted-foreground">
+                                      Sin regiones registradas.
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button
                 type="submit"
                 disabled={creatingUser}
@@ -781,34 +1520,101 @@ export default function Dashboard() {
                   Aún no hay usuarios registrados.
                 </p>
               ) : (
-                usuarios.map((usuario) => (
-                  <article
-                    key={usuario.id_usuario}
-                    className="flex flex-col gap-3 rounded-2xl border border-border bg-card/70 p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div>
-                      <h3 className="text-base font-semibold text-foreground">
-                        {usuario.nombre}
-                      </h3>
-                      <p className="text-sm text-muted-foreground">{usuario.email}</p>
-                    </div>
-                    <div className="flex items-center gap-3 sm:gap-4">
-                      <span className="inline-flex items-center justify-center rounded-full border border-border bg-muted/70 px-4 py-1.5 text-xs font-medium text-muted-foreground">
-                        {usuario.rol?.nombre || "Rol sin asignar"}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteUser(usuario.id_usuario)}
-                        disabled={deletingUserId === usuario.id_usuario}
-                        className="rounded-lg border border-destructive/60 px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/10 disabled:cursor-not-allowed disabled:border-destructive/30 disabled:text-destructive/50 disabled:hover:bg-transparent"
-                      >
-                        {deletingUserId === usuario.id_usuario
-                          ? "Eliminando..."
-                          : "Eliminar"}
-                      </button>
-                    </div>
-                  </article>
-                ))
+                usuarios.map((usuario) => {
+                  const permissionGroups = new Map();
+
+                  usuario.permisos?.forEach((asignacion) => {
+                    const permisoNombre =
+                      asignacion.permiso?.nombre ||
+                      `Permiso ${asignacion.id_permiso}`;
+                    const label = getScopeLabel(asignacion);
+
+                    if (!permissionGroups.has(permisoNombre)) {
+                      permissionGroups.set(permisoNombre, new Set());
+                    }
+
+                    permissionGroups.get(permisoNombre).add(label);
+                  });
+
+                  return (
+                    <article
+                      key={usuario.id_usuario}
+                      className="flex flex-col gap-4 rounded-2xl border border-border bg-card/70 p-5 shadow-sm sm:flex-row sm:items-start sm:justify-between"
+                    >
+                      <div className="space-y-3">
+                        <div>
+                          <h3 className="text-base font-semibold text-foreground">
+                            {usuario.nombre}
+                          </h3>
+                          <p className="text-sm text-muted-foreground">
+                            {usuario.email}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/60 px-3 py-1">
+                            {usuario.rol?.nombre || "Rol sin asignar"}
+                          </span>
+                          {usuario.departamento?.nombre && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/60 px-3 py-1">
+                              Departamento {usuario.departamento.nombre}
+                            </span>
+                          )}
+                          {usuario.departamento?.region?.nombre && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/60 px-3 py-1">
+                              Región {usuario.departamento.region.nombre}
+                            </span>
+                          )}
+                          {usuario.departamento?.region?.pais?.nombre && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/60 px-3 py-1">
+                              País {usuario.departamento.region.pais.nombre}
+                            </span>
+                          )}
+                        </div>
+                        {permissionGroups.size ? (
+                          <div className="space-y-2">
+                            {[...permissionGroups.entries()].map(
+                              ([permisoNombre, labels]) => (
+                                <div
+                                  key={`${usuario.id_usuario}-${permisoNombre}`}
+                                >
+                                  <p className="text-xs font-medium text-foreground">
+                                    {permisoNombre}
+                                  </p>
+                                  <div className="mt-1 flex flex-wrap gap-2">
+                                    {[...labels].map((label) => (
+                                      <span
+                                        key={`${usuario.id_usuario}-${permisoNombre}-${label}`}
+                                        className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[11px] text-primary/90"
+                                      >
+                                        {label}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            Sin permisos específicos asignados.
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-start gap-3 sm:flex-col sm:items-end sm:gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteUser(usuario.id_usuario)}
+                          disabled={deletingUserId === usuario.id_usuario}
+                          className="rounded-lg border border-destructive/60 px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/10 disabled:cursor-not-allowed disabled:border-destructive/30 disabled:text-destructive/50 disabled:hover:bg-transparent"
+                        >
+                          {deletingUserId === usuario.id_usuario
+                            ? "Eliminando..."
+                            : "Eliminar"}
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })
               )}
             </div>
           </section>
